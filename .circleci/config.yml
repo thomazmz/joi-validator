@@ -1,0 +1,162 @@
+version: 2.1
+
+save-cache: &save_cache
+  save_cache:
+    key: npm-packages-{{ checksum "package-lock.json" }}
+    paths:
+      - ~/.cache/npm
+
+restore-cache: &restore_cache
+  restore_cache:
+    keys:
+      - npm-packages-{{ checksum "package-lock.json" }}
+
+persist-directory-state: &persist-directory-state
+  persist_to_workspace:
+    root: /home/circleci
+    paths: project
+
+restore-directory-state: &restore-directory-state
+  attach_workspace:
+    at: /home/circleci
+
+filter-feature-branch: &filter-feature-branch
+  branches:
+    ignore:
+      - main
+
+filter-main-branch: &filter-main-branch
+  branches:
+    only: /main/
+    ignore:
+      - /.*/
+
+filter-semver-tag: &filter-semver-tag
+  tags:
+    only:
+      - /^v\d+\.\d+\.\d+$/
+  branches:
+    ignore:
+      - /.*/
+
+executors:
+  node:
+    docker:
+      - image: cimg/node:${NODE_VERSION}
+
+jobs:
+  checkout:
+    executor: node
+    steps:
+      - checkout
+      - <<: *restore_cache
+      - run:
+          name: "Install dependencies"
+          command: npm ci
+      - <<: *save_cache
+      - <<: *persist-directory-state
+  build:
+    executor: node
+    steps:
+      - <<: *restore-directory-state
+      - run:
+          name: "Build monorepo packages"
+          command: npm run build
+      - <<: *persist-directory-state
+  run-unit-tests:
+    executor: node
+    steps:
+      - <<: *restore-directory-state
+      - run:
+          name: "Run unit tests"
+          command: npm run test:unit
+  version:
+    executor: node
+    steps:
+      - <<: *restore-directory-state
+      - add_ssh_keys:
+          fingerprints:
+            - "87:5f:6a:25:71:0c:6e:7f:15:1b:40:d0:31:68:2b:47"
+      - run:
+          name: "Add GitHub to known hosts"
+          command: ssh-keyscan github.com >> ~/.ssh/known_hosts
+      - run:
+          name: "Configure GitHub Circle CI user"
+          command: |
+            git config user.email "circleci@joi-validator.com"
+            git config user.name "circleci"
+      - run:
+          name: "Instal conventional-recommended-bump globally"
+          command: |
+            sudo npm install -g conventional-recommended-bump
+            sudo npm install -g conventional-changelog-angular
+      - run:
+          name: "Generate release version locally"
+          command: |
+            RELEASE_TYPE=$(conventional-recommended-bump -p angular)
+            echo "Next release type: $RELEASE_TYPE"
+            npm version $RELEASE_TYPE -m "chore(release): v%s [skip ci]"
+            VERSION=$(jq -r '.version' package.json)
+            echo "Created version: $VERSION"
+      - run:
+          name: "Push release version to github"
+          command: git push origin --follow-tags
+  publish:
+    executor: node
+    steps:
+      - <<: *restore-directory-state
+      - run:
+          name: "Authenticate to NPM registry"
+          command: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > /home/circleci/.npmrc
+      - run:
+          name: "Publish Package to NPM registry"
+          command: npm publish --access public
+
+workflows:
+  feature-branch-pipeline:
+    jobs:
+      - checkout:
+          filters:
+            <<: *filter-feature-branch
+      - build:
+          name: build
+          requires:
+            - checkout
+      - run-unit-tests:
+          name: run-unit-tests
+          requires:
+            - build
+  main-branch-pipeline:
+    jobs:
+      - checkout:
+          filters:
+            <<: *filter-main-branch
+      - build:
+          name: build
+          requires:
+            - checkout
+      - run-unit-tests:
+          name: run-unit-tests
+          requires:
+            - build
+      - version:
+          name: version
+          requires:
+            - run-unit-tests
+  semver-tag-pipeline:
+    jobs:
+      - checkout:
+          filters:
+            <<: *filter-semver-tag
+      - build:
+          name: build
+          requires:
+            - checkout
+          filters:
+            <<: *filter-semver-tag
+      - publish:
+          name: publish
+          requires:
+            - build
+          filters:
+            <<: *filter-semver-tag

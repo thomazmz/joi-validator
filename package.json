@@ -1,0 +1,39 @@
+{
+  "name": "@thomazmz/joi-validator",
+  "license": "ISC",
+  "version": "0.0.2",
+  "author": "Thomaz Zandonotto <thomaz.zandonotto@gmail.com>",
+  "description": "A validator implementation using Joi",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "./lib"
+  ],
+  "keywords": [
+    "typescript",
+    "javascript",
+    "validator",
+    "joi"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "rimraf ./lib/* && tsc",
+    "test:unit": "jest --config ./jest.json --passWithNoTests"
+  },
+  "devDependencies": {
+    "@thomazmz/core-context": "^0.2.10",
+    "@thomazmz/joi-utils": "0.0.2",
+    "@types/jest": "^29.4.0",
+    "@types/node": "^18.14.0",
+    "jest": "^29.4.3",
+    "joi": "^17.9.2",
+    "rimraf": "^4.1.2",
+    "ts-jest": "^29.0.5",
+    "typescript": "^4.9.5"
+  },
+  "peerDependencies": {
+    "joi": "^17.9.2"
+  }
+}
